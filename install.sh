@@ -139,8 +139,13 @@ step "finding the Debian 13 template"
 tmpl_store="$(pvesm status --content vztmpl 2>/dev/null | awk 'NR > 1 && $3 == "active" {print $1; exit}')"
 [ -n "$tmpl_store" ] || die "no active storage accepts templates (content: vztmpl)"
 pveam update >/dev/null
-template="$(pveam available --section system | awk '$2 ~ /^debian-13-standard_/ {print $2}' | sort -V | tail -n1)"
-[ -n "$template" ] || die "pveam offers no debian-13-standard template"
+# Filter by the HOST's architecture: pveam lists amd64 and arm64 builds side by
+# side, and "newest by version sort" alone picks arm64 (it sorts after amd64),
+# which an x86 host creates fine and then cannot start.
+arch="$(dpkg --print-architecture)"
+template="$(pveam available --section system |
+  awk -v a="$arch" '$2 ~ "^debian-13-standard_.*_" a "\\.tar" {print $2}' | sort -V | tail -n1)"
+[ -n "$template" ] || die "pveam offers no debian-13-standard template for ${arch}"
 if ! pveam list "$tmpl_store" | grep -q "$template"; then
   pveam download "$tmpl_store" "$template" >/dev/null
 fi
@@ -164,8 +169,9 @@ pct create "$CT_ID" "${tmpl_store}:vztmpl/${template}" \
   --rootfs "${CT_STORAGE}:${CT_DISK}" \
   --net0 "$net" \
   --onboot 1 \
+  --arch "$arch" \
   --tags claude >/dev/null
-pct start "$CT_ID"
+pct start "$CT_ID" || die "CT ${CT_ID} was created but will not start. Remove it with: pct destroy ${CT_ID}"
 ok "CT ${CT_ID} created and started"
 
 step "waiting for its network"
