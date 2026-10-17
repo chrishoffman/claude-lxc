@@ -3,8 +3,8 @@
 # user, Claude Code, herdr, a tmux session that survives disconnects and
 # reboots, and a firewall that keeps the agent off your LAN.
 #
-# RUNS INSIDE THE CONTAINER, as root. ct/claude.sh (the wizard) runs it for
-# you; it also works on its own on any Debian 13 CT, from the CT's console.
+# RUNS INSIDE THE CONTAINER, as root. install.sh pushes and runs it for you;
+# it also works on its own on any Debian 13 CT, from the CT's console.
 # Nothing here touches the Proxmox host. Safe to re-run: every step checks
 # before it acts, and re-running is how herdr gets updated.
 #
@@ -14,8 +14,8 @@
 #   --no-herdr           skip herdr
 #   --no-lockdown        skip the in-container firewall (see README)
 #
-# Root's own authorized_keys (what the community-scripts wizard's SSH key
-# prompt fills) are copied over too. With no keys at all it still finishes,
+# Root's own authorized_keys, if the CT was created with any, are copied over
+# too. With no keys at all it still finishes,
 # and warns: re-run with --github-keys to add them, from the CT console.
 #
 # Exit: 0 on success, 1 on any failure.

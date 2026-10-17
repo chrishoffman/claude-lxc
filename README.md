@@ -1,14 +1,13 @@
 # claude-lxc
 
-A [Proxmox community-scripts](https://community-scripts.github.io/ProxmoxVE/)
-style installer for a remote [Claude Code](https://claude.com/claude-code)
-box. It sets up an unprivileged Debian 13 LXC with Claude Code and
-[herdr](https://herdr.dev), and makes one paste.
+One paste in the Proxmox shell gives you a remote
+[Claude Code](https://claude.com/claude-code) box: an unprivileged Debian 13
+LXC with Claude Code and [herdr](https://herdr.dev).
 
-- **From a terminal:** SSH in and run `herdr`. Agents keep running after you
+- **From a terminal:** SSH in and run `herdr`. Agents keep running when you
   disconnect.
 - **From your phone:** run `claude remote-control` in a pane, then open it in
-  the Claude app. It connects outbound only, so no ports need to be open.
+  the Claude app. It connects outbound only, so you don't open any ports.
 - **Off your LAN:** a firewall inside the container lets the agent reach the
   internet but not your other machines.
 
@@ -17,28 +16,52 @@ box. It sets up an unprivileged Debian 13 LXC with Claude Code and
 In the Proxmox UI, open your node → **Shell** and run:
 
 ```bash
-GITHUB_KEYS=<your-github-username> \
-  bash -c "$(curl -fsSL https://raw.githubusercontent.com/chrishoffman/claude-lxc/main/ct/claude.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/chrishoffman/claude-lxc/main/install.sh)"
 ```
 
-It's the usual community-scripts wizard, with defaults of 4 cores, 8 GB RAM,
-a 32 GB disk, Debian 13 and an unprivileged container. Choose **Default**, or
-**Advanced** to set a static IP or hostname. `GITHUB_KEYS` authorizes the
-public keys from `github.com/<user>.keys` for SSH. You can leave it off and
-paste a key at the wizard's SSH key prompt (Advanced) instead.
+It asks these questions; press Enter on any of them to take the default:
 
-The wizard creates the container. Then, inside it, it sets up:
+| Question | Default |
+|---|---|
+| Storage | `local-zfs` or `local-lvm`, if one exists |
+| Container ID | the next ID that's actually free |
+| Hostname | `claude` |
+| CPU cores | 4 |
+| RAM | 8192 MB |
+| Disk | 32 GB |
+| Bridge | `vmbr0` |
+| IP | `dhcp`, or a CIDR such as `192.168.1.50/24` (then it asks for a gateway) |
+| GitHub user | none. Give a username and the keys at `github.com/<user>.keys` can SSH in |
+
+Then it shows a summary and asks once more before it changes anything.
+
+On the host, it only downloads the Debian 13 template and runs `pct create`
+and `pct start`. Everything else runs **inside** the container, through
+`provision.sh`. That script sets up:
 
 - a `claude` user with **no sudo**
-- SSH that accepts keys only and refuses root login
-- Claude Code, from the native installer, which keeps itself updated
+- SSH that takes keys only and refuses root logins
+- Claude Code, from the native installer, which updates itself
 - herdr
-- a tmux session `main` that survives reboots, for when you don't want herdr
+- a tmux session called `main` that survives reboots, for when you don't use
+  herdr
 - unattended security updates
 - the [lockdown](#lockdown) firewall
 
-The only host-side code is the community-scripts engine creating a container.
-Everything this repo adds runs inside the container.
+When an ID is taken, the installer tells you why: an existing guest, a
+config file, or a disk that a deleted guest left on the storage. The last
+case is the confusing one. Proxmox's own "next ID" doesn't know about those
+disks, but `pct create` fails on them.
+
+Unattended: set the answers as environment variables and add `--yes`.
+
+```bash
+CT_ID=120 CT_IP=192.168.1.50/24 CT_GW=192.168.1.1 GITHUB_KEYS=octocat \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/chrishoffman/claude-lxc/main/install.sh)" _ --yes
+```
+
+The variables are `CT_ID`, `CT_HOSTNAME`, `CT_CORES`, `CT_RAM`, `CT_DISK`,
+`CT_STORAGE`, `CT_BRIDGE`, `CT_IP`, `CT_GW` and `GITHUB_KEYS`.
 
 ## First login
 
@@ -78,11 +101,16 @@ protection there (PRs required) *before* you give the agent write access.
 
 ## Update
 
-Open the container's **Console** and run the same one-liner, without
-`GITHUB_KEYS`. It re-runs `provision.sh`, which skips anything already set up
-and updates herdr. Claude Code updates itself.
+Open the container's **Console** and run:
 
-## Without the wizard
+```bash
+/root/provision.sh
+```
+
+It skips everything that's already set up and updates herdr. Claude Code
+updates itself.
+
+## Without the installer
 
 `provision.sh` works on its own on any Debian 13 container. Run it as root in
 the container's console:
@@ -137,6 +165,5 @@ them.
 
 | File | Runs | Does |
 |---|---|---|
-| `ct/claude.sh` | Proxmox host | the community-scripts wizard; points the engine at this repo |
-| `install/claude-install.sh` | in the CT | the engine's install hook; runs `provision.sh` |
-| `provision.sh` | in the CT | everything else; also usable on its own |
+| `install.sh` | Proxmox host | asks the questions, creates the container, and pushes `provision.sh` into it |
+| `provision.sh` | in the CT | everything else; it also works on its own |
