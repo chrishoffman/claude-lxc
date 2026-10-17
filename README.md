@@ -48,10 +48,13 @@ and `pct start`. Everything else runs **inside** the container, through
 - unattended security updates
 - the [lockdown](#lockdown) firewall
 
-When an ID is taken, the installer tells you why: an existing guest, a
-config file, or a disk that a deleted guest left on the storage. The last
-case is the confusing one. Proxmox's own "next ID" doesn't know about those
-disks, but `pct create` fails on them.
+When an ID is taken, the installer tells you why. It might be an existing
+guest, a config file, a disk a deleted guest left on **any** storage, or an LVM
+volume that no storage points at, such as one on an old host's disk you've
+plugged in. The last two are the confusing cases. Proxmox's own "next ID" and
+its UI don't show them, but reusing that ID is risky: `pct rescan` would
+attach the old disk to the new container, and destroying the container later
+could delete that disk.
 
 Unattended: set the answers as environment variables and add `--yes`.
 

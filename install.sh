@@ -54,11 +54,19 @@ id_owner() {
   for f in /etc/pve/nodes/*/lxc/"$id".conf /etc/pve/nodes/*/qemu-server/"$id".conf; do
     [ -e "$f" ] && { echo "$f exists"; return 0; }
   done
-  local vol
-  vol="$(pvesm list "$CT_STORAGE" 2>/dev/null | awk -v id="$id" '$NF == id {print $1; exit}')"
-  if [ -n "$vol" ]; then
-    echo "an orphaned disk of $id is still on $CT_STORAGE ($vol)"; return 0
-  fi
+  # Every storage, not just the target: Proxmox ties a volume to a guest by
+  # the ID in its name alone, so `pct rescan` would attach a leftover disk on
+  # ANY storage to a new guest with that ID, and a later destroy with
+  # "unreferenced disks" would delete it. Reusing the ID is the hazard.
+  local s vol
+  for s in $all_storages; do
+    vol="$(pvesm list "$s" 2>/dev/null | awk -v id="$id" '$NF == id {print $1; exit}')"
+    [ -n "$vol" ] && { echo "a disk of a deleted guest $id is still on $s ($vol)"; return 0; }
+  done
+  # LVM no storage points at (e.g. an old host's disk plugged in): invisible
+  # to pvesm and the UI, but its names still carry the ID.
+  vol="$(lvs --noheadings -o vg_name,lv_name 2>/dev/null | awk -v id="$id" '$2 ~ "(^|-)"id"(-|$)" {print $1"/"$2; exit}')"
+  [ -n "$vol" ] && { echo "LVM volume $vol carries ID $id (not in any Proxmox storage)"; return 0; }
   return 1
 }
 
@@ -69,6 +77,7 @@ storages="$(pvesm status --content rootdir 2>/dev/null | awk 'NR > 1 && $3 == "a
 [ -n "$storages" ] || die "no active storage accepts container disks (content: rootdir)"
 def_storage="$(printf '%s\n' "$storages" | grep -xE 'local-zfs|local-lvm' | head -n1 || true)"
 def_storage="${def_storage:-$(printf '%s\n' "$storages" | head -n1)}"
+all_storages="$(pvesm status 2>/dev/null | awk 'NR > 1 {print $1}')"
 def_gw="$(ip -4 route show default 2>/dev/null | awk '{print $3; exit}' || true)"
 
 printf '\n%sClaude Code LXC%s — Enter takes the default.\n\n' "$B" "$N"
